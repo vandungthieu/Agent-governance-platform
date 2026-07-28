@@ -1,0 +1,14 @@
+1 setup, install thư viện
+2 load dữ liệu đã chuẩn bị
+3 setup vector DB để đưa vào FAQ vào để query
+4 tool define 
+5 agent setup
+6 test 
+
+agent-orchestrator
+api-gateway
+audit-service
+auth-service
+guardrail-service
+tool-registry
+user-service
