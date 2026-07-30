@@ -1,3 +1,6 @@
+import re
+import unicodedata
+
 from app.agents.base import BaseAgent
 from app.llm import OllamaClient
 from app.states.workflow import AgentRole, TaskType
@@ -48,7 +51,10 @@ class OrchestratorAgent(BaseAgent):
             [
                 "ho so khach hang",
                 "thong tin khach hang",
+                "khach hang",
+                "khách hàng",
                 "customer profile",
+                "customer",
                 "kyc",
                 "kyb",
                 "doi chieu khach hang",
@@ -315,4 +321,14 @@ class OrchestratorAgent(BaseAgent):
 
     @staticmethod
     def _contains_any(text: str, keywords: list[str]) -> bool:
-        return any(keyword in text for keyword in keywords)
+        normalized_text = OrchestratorAgent._normalize_text(text)
+        return any(OrchestratorAgent._normalize_text(keyword) in normalized_text for keyword in keywords)
+
+    @staticmethod
+    def _normalize_text(value: str) -> str:
+        without_accents = "".join(
+            character
+            for character in unicodedata.normalize("NFD", value.lower())
+            if unicodedata.category(character) != "Mn"
+        )
+        return re.sub(r"[^a-z0-9]+", " ", without_accents)

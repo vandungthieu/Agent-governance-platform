@@ -21,10 +21,11 @@ class CustomerDataGuardAgent(BaseAgent):
             checklist_result = self.tools.run("customer_profile.checklist", text=input_text)
             knowledge_result = self.tools.run(
                 "knowledge.search",
-                query="KYC KYB customer profile data handling PII",
-                limit=3,
+                query=input_text,
+                limit=5,
             )
             return self._generate_customer_profile_review(
+                input_text=input_text,
                 masked_text=masking_result.output,
                 checklist=checklist_result.output,
                 retrieved_knowledge=knowledge_result.output,
@@ -43,17 +44,22 @@ class CustomerDataGuardAgent(BaseAgent):
 
     def _generate_customer_profile_review(
         self,
+        input_text: str,
         masked_text: str,
         checklist: dict,
         retrieved_knowledge: list[dict],
     ) -> str:
         system_prompt = (
             "You are CustomerDataGuardAgent for an internal banking assistant. "
-            "Help staff review customer data safely. Do not reveal or reconstruct PII. "
-            "Use retrieved internal knowledge when available. Return concise Vietnamese output "
-            "with missing information and next steps."
+            "Authentication and staff authorization are handled by an upstream auth service, so do not "
+            "perform role checks or refuse ordinary customer-profile fields in this agent. Use retrieved "
+            "internal knowledge when available and answer the user's exact customer-profile question first "
+            "when the answer is present. Do not reveal OTP, PIN, CVV, passwords, tokens, or secrets. If a "
+            "requested value is not present in retrieved knowledge, say it is not found in internal data. "
+            "Return concise Vietnamese output."
         )
         user_prompt = (
+            f"User request:\n{input_text}\n\n"
             f"Masked customer text:\n{masked_text}\n\n"
             f"Checklist result:\n{checklist}\n\n"
             f"Retrieved internal knowledge:\n{retrieved_knowledge}\n\n"
@@ -69,8 +75,10 @@ class CustomerDataGuardAgent(BaseAgent):
     ) -> str:
         system_prompt = (
             "You are CustomerDataGuardAgent for an internal banking assistant. "
-            "Summarize what sensitive customer data was detected after masking. "
-            "Do not reveal or infer original values. Use retrieved internal knowledge when available."
+            "Summarize what customer data was detected after masking. Authentication and staff "
+            "authorization are handled by an upstream auth service, so do not perform role checks here. "
+            "Do not reveal OTP, PIN, CVV, passwords, tokens, or secrets. Use retrieved internal knowledge "
+            "when available."
         )
         user_prompt = (
             f"Masked text:\n{masked_text}\n\n"

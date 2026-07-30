@@ -11,6 +11,11 @@ class Settings(BaseSettings):
     OLLAMA_MODEL: str = Field(min_length=1)
     LLM_TIMEOUT_SECONDS: float
 
+    EMBEDDING_PROVIDER: str = "ollama"
+    OLLAMA_EMBEDDING_MODEL: str = "nomic-embed-text"
+    EMBEDDING_DIMENSIONS: int = 768
+    EMBEDDING_TIMEOUT_SECONDS: float = 60
+
     POSTGRES_HOST: str = Field(min_length=1)
     POSTGRES_PORT: int
     POSTGRES_DB: str = Field(min_length=1)

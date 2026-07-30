@@ -12,3 +12,9 @@ auth-service
 guardrail-service
 tool-registry
 user-service
+
+
+docker compose up -d postgres
+docker ps
+$env:PYTHONPATH="service/agent-orchestrator"
+.\venv\Scripts\python.exe -m uvicorn app.main:app --reload --port 8001
