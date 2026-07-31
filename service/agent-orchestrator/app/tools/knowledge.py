@@ -59,6 +59,7 @@ class KnowledgeSearchTool:
 
 
 def normalize_text(value: str) -> str:
+    value = value.replace("Đ", "D").replace("đ", "d")
     without_accents = "".join(
         character
         for character in unicodedata.normalize("NFD", value.lower())

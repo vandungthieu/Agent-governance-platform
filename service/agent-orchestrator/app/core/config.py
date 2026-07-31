@@ -27,6 +27,12 @@ class Settings(BaseSettings):
     WEB_SEARCH_TIMEOUT_SECONDS: float
     WEB_SEARCH_MAX_RESULTS: int
 
+    SUPERMEMORY_ENABLED: bool = False
+    SUPERMEMORY_API_KEY: str = ""
+    SUPERMEMORY_BASE_URL: str = "https://api.supermemory.ai"
+    SUPERMEMORY_TIMEOUT_SECONDS: float = 15
+    SUPERMEMORY_CONTAINER_PREFIX: str = "agent-governance"
+
     @computed_field
     @property
     def DATABASE_URL(self) -> str:

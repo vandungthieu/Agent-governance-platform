@@ -192,14 +192,14 @@ class OrchestratorAgent(BaseAgent):
         }
         return plans[task_type]
 
-    def summarize(self, input_text: str) -> str:
+    def summarize(self, input_text: str, memory_context: str = "") -> str:
         route = self.route(input_text)
         task_type = self.classify_task(input_text)
         deterministic_summary = (
             f"Orchestrator classified task_type={task_type.value}, "
             f"route={route}, input_length={len(input_text)}."
         )
-        if route == AgentRole.orchestrator.value:
+        if route != AgentRole.orchestrator.value:
             return deterministic_summary
 
         llm_summary = self._generate_orchestration_summary(
@@ -207,13 +207,19 @@ class OrchestratorAgent(BaseAgent):
             route=route,
             task_type=task_type,
             workflow_plan=self.build_plan(input_text),
+            memory_context=memory_context,
         )
         return f"{deterministic_summary} LLM rationale: {llm_summary}"
 
-    def run(self, input_text: str, task_type: TaskType | None = None) -> str:
-        return self.summarize(input_text)
+    def run(
+        self,
+        input_text: str,
+        task_type: TaskType | None = None,
+        memory_context: str = "",
+    ) -> str:
+        return self.summarize(input_text, memory_context=memory_context)
 
-    def answer_direct(self, input_text: str) -> str:
+    def answer_direct(self, input_text: str, memory_context: str = "") -> str:
         task_type = self.classify_task(input_text)
         workflow_plan = self.build_plan(input_text)
         web_results = self._search_web_if_needed(input_text)
@@ -231,6 +237,7 @@ class OrchestratorAgent(BaseAgent):
             f"User request:\n{input_text}\n\n"
             f"Task type: {task_type.value}\n"
             f"Workflow plan: {workflow_plan}\n\n"
+            f"Memory context:\n{memory_context or 'No memory context available.'}\n\n"
             f"web_search_results:\n{web_results}\n\n"
             "Provide only the final user-facing answer."
         )
@@ -282,6 +289,7 @@ class OrchestratorAgent(BaseAgent):
         route: str,
         task_type: TaskType,
         workflow_plan: list[str],
+        memory_context: str = "",
     ) -> str:
         if route == AgentRole.orchestrator.value:
             system_prompt = (
@@ -295,6 +303,7 @@ class OrchestratorAgent(BaseAgent):
                 f"User request:\n{input_text}\n\n"
                 f"Task type: {task_type.value}\n"
                 f"Workflow plan: {workflow_plan}\n\n"
+                f"Memory context:\n{memory_context or 'No memory context available.'}\n\n"
                 "Provide the direct orchestrator response."
             )
             try:
@@ -312,6 +321,7 @@ class OrchestratorAgent(BaseAgent):
             f"Selected route: {route}\n"
             f"Task type: {task_type.value}\n"
             f"Workflow plan: {workflow_plan}\n\n"
+            f"Memory context:\n{memory_context or 'No memory context available.'}\n\n"
             "Explain why this route and plan are appropriate for staff workflow."
         )
         try:
@@ -326,6 +336,7 @@ class OrchestratorAgent(BaseAgent):
 
     @staticmethod
     def _normalize_text(value: str) -> str:
+        value = value.replace("Đ", "D").replace("đ", "d")
         without_accents = "".join(
             character
             for character in unicodedata.normalize("NFD", value.lower())

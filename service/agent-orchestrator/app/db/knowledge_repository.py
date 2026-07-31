@@ -99,6 +99,51 @@ def search_knowledge_chunks_by_vector(
     ]
 
 
+def list_knowledge_chunks(
+    db: Session,
+    limit: int = 100,
+    document_type: str | None = None,
+) -> list[dict[str, Any]]:
+    statement = text(
+        """
+        SELECT
+            kc.id,
+            kc.document_id,
+            kc.chunk_index,
+            kc.content,
+            kd.title,
+            kd.document_type,
+            kd.source_uri
+        FROM knowledge_chunks kc
+        JOIN knowledge_documents kd ON kd.id = kc.document_id
+        WHERE CAST(:document_type AS text) IS NULL OR kd.document_type = CAST(:document_type AS text)
+        ORDER BY kd.created_at DESC, kc.chunk_index ASC
+        LIMIT :limit
+        """
+    )
+    rows = db.execute(
+        statement,
+        {
+            "limit": limit,
+            "document_type": document_type,
+        },
+    ).mappings()
+
+    return [
+        {
+            "chunk_id": str(row["id"]),
+            "document_id": str(row["document_id"]),
+            "chunk_index": row["chunk_index"],
+            "title": row["title"],
+            "document_type": row["document_type"],
+            "source_uri": row["source_uri"],
+            "content": row["content"],
+            "rank": 0.0,
+        }
+        for row in rows
+    ]
+
+
 def search_knowledge_chunks(
     db: Session,
     query: str,

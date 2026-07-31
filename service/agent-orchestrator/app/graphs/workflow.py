@@ -53,10 +53,16 @@ class WorkflowGraph:
                 "route": route,
                 "task_type": task_type,
                 "workflow_plan": self.orchestrator.build_plan(state.input_text),
-                "orchestrator_summary": self.orchestrator.run(state.input_text),
+                "orchestrator_summary": self.orchestrator.run(
+                    state.input_text,
+                    memory_context=state.memory_context,
+                ),
             }
             if route == AgentRole.orchestrator:
-                node_output["final_answer"] = self.orchestrator.answer_direct(state.input_text)
+                node_output["final_answer"] = self.orchestrator.answer_direct(
+                    state.input_text,
+                    memory_context=state.memory_context,
+                )
             record_workflow_step(
                 step_name="orchestrator_classify",
                 agent_role=AgentRole.orchestrator.value,
@@ -90,7 +96,11 @@ class WorkflowGraph:
                     {
                         "role": AgentRole.customer_data_guard,
                         "task_type": state.task_type,
-                        "output": self.customer_data_guard.run(state.input_text, state.task_type),
+                        "output": self.customer_data_guard.run(
+                            state.input_text,
+                            state.task_type,
+                            memory_context=state.memory_context,
+                        ),
                     }
                 ]
             }
@@ -127,7 +137,11 @@ class WorkflowGraph:
                     {
                         "role": AgentRole.banking_knowledge,
                         "task_type": state.task_type,
-                        "output": self.banking_knowledge.run(state.input_text, state.task_type),
+                        "output": self.banking_knowledge.run(
+                            state.input_text,
+                            state.task_type,
+                            memory_context=state.memory_context,
+                        ),
                     }
                 ]
             }
@@ -203,8 +217,12 @@ class WorkflowGraph:
             return "customer_data_guard"
         return "banking_knowledge"
 
-    def execute(self, input_text: str) -> tuple[AgentRole, object, list[str], str, list, str]:
-        result = self.graph.invoke({"input_text": input_text})
+    def execute(
+        self,
+        input_text: str,
+        memory_context: str = "",
+    ) -> tuple[AgentRole, object, list[str], str, list, str]:
+        result = self.graph.invoke({"input_text": input_text, "memory_context": memory_context})
         return (
             result["route"],
             result["task_type"],

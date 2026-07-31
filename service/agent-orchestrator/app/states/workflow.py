@@ -23,6 +23,8 @@ class TaskType(str, Enum):
 
 class WorkflowRequest(BaseModel):
     input_text: str = Field(min_length=1)
+    session_id: str | None = None
+    user_id: str | None = None
 
 
 class AgentResult(BaseModel):
@@ -37,6 +39,7 @@ def _merge_results(left: list["AgentResult"], right: list["AgentResult"]) -> lis
 
 class AgentState(BaseModel):
     input_text: str
+    memory_context: str = ""
     route: AgentRole = AgentRole.orchestrator
     task_type: TaskType = TaskType.orchestrator_direct_response
     workflow_plan: list[str] = Field(default_factory=list)
@@ -47,6 +50,8 @@ class AgentState(BaseModel):
 
 class WorkflowResponse(BaseModel):
     trace_id: str
+    session_id: str | None = None
+    user_id: str | None = None
     route: AgentRole
     task_type: TaskType
     workflow_plan: list[str]

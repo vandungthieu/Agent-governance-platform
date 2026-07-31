@@ -36,3 +36,40 @@ $env:POSTGRES_PORT='5433'
 ```
 
 Use `--skip-embeddings` to ingest chunks without calling Ollama.
+
+## Optional Supermemory Pipeline
+
+Supermemory can be used as an external conversation memory layer. The local
+PostgreSQL/pgvector RAG remains available for internal documents.
+
+Enable it in `service/agent-orchestrator/.env`:
+
+```env
+SUPERMEMORY_ENABLED=true
+SUPERMEMORY_API_KEY=sm_your_api_key_here
+SUPERMEMORY_BASE_URL=https://api.supermemory.ai
+SUPERMEMORY_TIMEOUT_SECONDS=15
+SUPERMEMORY_CONTAINER_PREFIX=agent-governance
+```
+
+Send a stable `session_id` or `user_id` with each request:
+
+```json
+{
+  "session_id": "session_001",
+  "user_id": "employee_001",
+  "input_text": "email cua khach hang do la gi?"
+}
+```
+
+Pipeline:
+
+```text
+/api/v1/run
+-> recall profile/relevant memories from Supermemory
+-> run orchestrator and specialist agents with memory_context
+-> store the user/assistant turn back into Supermemory
+```
+
+If `SUPERMEMORY_ENABLED=false` or the API key is missing, the pipeline falls back
+to the local-only behavior.

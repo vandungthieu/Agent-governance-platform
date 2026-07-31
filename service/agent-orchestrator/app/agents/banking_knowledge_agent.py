@@ -1,4 +1,9 @@
+import re
+import unicodedata
+
 from app.agents.base import BaseAgent
+from app.db.knowledge_repository import list_knowledge_chunks
+from app.db.session import SessionLocal
 from app.llm import OllamaClient
 from app.states.workflow import TaskType
 from app.tools import ToolRegistry, default_tool_registry
@@ -13,7 +18,12 @@ class BankingKnowledgeAgent(BaseAgent):
         self.tools = tools or default_tool_registry
         self.llm = llm or OllamaClient()
 
-    def run(self, input_text: str, task_type: TaskType | None = None) -> str:
+    def run(
+        self,
+        input_text: str,
+        task_type: TaskType | None = None,
+        memory_context: str = "",
+    ) -> str:
         task_type = task_type or TaskType.general_banking_knowledge
 
         handlers = {
@@ -24,27 +34,29 @@ class BankingKnowledgeAgent(BaseAgent):
             TaskType.general_banking_knowledge: self._handle_general_banking_knowledge,
         }
         handler = handlers.get(task_type, self._handle_general_banking_knowledge)
-        return handler(input_text)
+        return handler(input_text, memory_context)
 
-    def _handle_document_intelligence(self, input_text: str) -> str:
+    def _handle_document_intelligence(self, input_text: str, memory_context: str = "") -> str:
         extraction = self.tools.run("document.extract", text=input_text)
         knowledge = self._retrieve_knowledge(input_text)
         return self._generate(
             task="Document Intelligence",
             input_text=input_text,
+            memory_context=memory_context,
             tool_context={
                 "document_extraction": extraction.output,
                 "retrieved_knowledge": knowledge,
             },
         )
 
-    def _handle_research_report(self, input_text: str) -> str:
+    def _handle_research_report(self, input_text: str, memory_context: str = "") -> str:
         template = self.tools.run("research_report.template", topic=input_text)
         knowledge = self._retrieve_knowledge(input_text)
         web_results = self._search_web(input_text)
         return self._generate(
             task="Research Report Drafting",
             input_text=input_text,
+            memory_context=memory_context,
             tool_context={
                 "report_template": template.output,
                 "retrieved_knowledge": knowledge,
@@ -52,47 +64,90 @@ class BankingKnowledgeAgent(BaseAgent):
             },
         )
 
-    def _handle_banking_process_support(self, input_text: str) -> str:
+    def _handle_banking_process_support(self, input_text: str, memory_context: str = "") -> str:
         checklist = self.tools.run("banking_process.checklist", text=input_text)
-        knowledge = self._retrieve_knowledge(input_text)
+        direct_answer = self._answer_from_retrieved_faq(
+            input_text,
+            self._retrieve_banking_knowledge_fast(input_text),
+        )
+        if direct_answer:
+            return direct_answer
+        knowledge = self._retrieve_knowledge(input_text, limit=3)
+        direct_answer = self._answer_from_retrieved_faq(input_text, knowledge)
+        if direct_answer:
+            return direct_answer
         return self._generate(
             task="Banking Process Support",
             input_text=input_text,
+            memory_context=memory_context,
             tool_context={
                 "process_checklist": checklist.output,
                 "retrieved_knowledge": knowledge,
             },
         )
 
-    def _handle_credit_risk_support(self, input_text: str) -> str:
+    def _handle_credit_risk_support(self, input_text: str, memory_context: str = "") -> str:
         checklist = self.tools.run("banking_process.checklist", text=input_text)
         knowledge = self._retrieve_knowledge(input_text)
         return self._generate(
             task="Credit Risk Support",
             input_text=input_text,
+            memory_context=memory_context,
             tool_context={
                 "credit_checklist": checklist.output,
                 "retrieved_knowledge": knowledge,
             },
         )
 
-    def _handle_general_banking_knowledge(self, input_text: str) -> str:
-        knowledge = self._retrieve_knowledge(input_text)
+    def _handle_general_banking_knowledge(self, input_text: str, memory_context: str = "") -> str:
+        direct_answer = self._answer_from_retrieved_faq(
+            input_text,
+            self._retrieve_banking_knowledge_fast(input_text),
+        )
+        if direct_answer:
+            return direct_answer
+        knowledge = self._retrieve_knowledge(input_text, limit=3)
+        direct_answer = self._answer_from_retrieved_faq(input_text, knowledge)
+        if direct_answer:
+            return direct_answer
         return self._generate(
             task="General Banking Knowledge",
             input_text=input_text,
+            memory_context=memory_context,
             tool_context={"retrieved_knowledge": knowledge},
         )
 
-    def _retrieve_knowledge(self, input_text: str) -> list[dict]:
-        result = self.tools.run("knowledge.search", query=input_text, limit=5)
+    def _retrieve_knowledge(self, input_text: str, limit: int = 5) -> list[dict]:
+        result = self.tools.run("knowledge.search", query=input_text, limit=limit)
         return result.output
 
     def _search_web(self, input_text: str) -> list[dict]:
         result = self.tools.run("web.search", query=input_text, limit=3)
         return result.output
 
-    def _generate(self, task: str, input_text: str, tool_context: object) -> str:
+    def _retrieve_banking_knowledge_fast(self, input_text: str) -> list[dict]:
+        query_tokens = self._tokens(input_text)
+        if not query_tokens:
+            return []
+        with SessionLocal() as db:
+            chunks = list_knowledge_chunks(db=db, limit=100, document_type="public_reference")
+        scored_chunks = []
+        for chunk in chunks:
+            content_tokens = self._tokens(str(chunk.get("content") or ""))
+            overlap_score = len(query_tokens & content_tokens) / max(len(query_tokens), 1)
+            if overlap_score <= 0:
+                continue
+            chunk["lexical_score"] = overlap_score
+            scored_chunks.append(chunk)
+        return sorted(scored_chunks, key=lambda chunk: chunk["lexical_score"], reverse=True)[:5]
+
+    def _generate(
+        self,
+        task: str,
+        input_text: str,
+        tool_context: object,
+        memory_context: str = "",
+    ) -> str:
         system_prompt = (
             "You are BankingKnowledgeAgent for an internal finance and banking assistant. "
             "Help employees with document intelligence, research drafts, banking processes, "
@@ -107,6 +162,7 @@ class BankingKnowledgeAgent(BaseAgent):
         user_prompt = (
             f"Task: {task}\n\n"
             f"User request:\n{input_text}\n\n"
+            f"Memory context:\n{memory_context or 'No memory context available.'}\n\n"
             f"Tool context:\n{tool_context}\n\n"
             "Produce only the final staff-facing answer. Mention source titles when they appear "
             "in retrieved_knowledge or web_search_results."
@@ -119,3 +175,68 @@ class BankingKnowledgeAgent(BaseAgent):
                 f"Tác vụ đã được phân loại là {task}, nhưng cần thử lại sau. "
                 f"Lý do kỹ thuật: {exc}"
             )
+
+    def _answer_from_retrieved_faq(self, input_text: str, retrieved_knowledge: list[dict]) -> str | None:
+        query_tokens = self._tokens(input_text)
+        if not query_tokens:
+            return None
+
+        for item in retrieved_knowledge[:2]:
+            content = str(item.get("content") or "")
+            for heading, body in self._iter_markdown_sections(content):
+                heading_tokens = self._tokens(heading)
+                if not heading_tokens:
+                    continue
+                overlap_ratio = len(query_tokens & heading_tokens) / max(len(query_tokens), 1)
+                if overlap_ratio < 0.45 and not heading_tokens.issubset(query_tokens | {"bao", "lau", "the"}):
+                    continue
+
+                answer = self._first_answer_paragraph(body)
+                if answer:
+                    source_title = item.get("title")
+                    source_suffix = f"\n\nNguồn: {source_title}." if source_title else ""
+                    return f"{answer}{source_suffix}"
+
+        return None
+
+    @staticmethod
+    def _iter_markdown_sections(content: str) -> list[tuple[str, str]]:
+        matches = list(re.finditer(r"^#{2,3}\s+(.+?)\s*$", content, flags=re.MULTILINE))
+        sections: list[tuple[str, str]] = []
+        for index, match in enumerate(matches):
+            start = match.end()
+            end = matches[index + 1].start() if index + 1 < len(matches) else len(content)
+            sections.append((match.group(1).strip(), content[start:end].strip()))
+        return sections
+
+    @staticmethod
+    def _first_answer_paragraph(body: str) -> str | None:
+        paragraphs = [
+            paragraph.strip()
+            for paragraph in re.split(r"\n\s*\n|^---$", body, flags=re.MULTILINE)
+            if paragraph.strip()
+        ]
+        for paragraph in paragraphs:
+            if paragraph.startswith("|") or paragraph.startswith("#"):
+                continue
+            cleaned = re.sub(r"\s+", " ", paragraph.replace("- ", "")).strip()
+            if cleaned:
+                return cleaned
+        return None
+
+    def _tokens(self, value: str) -> set[str]:
+        return {
+            token
+            for token in self._normalize_text(value).split()
+            if len(token) >= 2 and token not in {"cua", "toi", "duoc", "khong", "la", "gi"}
+        }
+
+    @staticmethod
+    def _normalize_text(value: str) -> str:
+        value = value.replace("Đ", "D").replace("đ", "d")
+        without_accents = "".join(
+            character
+            for character in unicodedata.normalize("NFD", value.lower())
+            if unicodedata.category(character) != "Mn"
+        )
+        return re.sub(r"[^a-z0-9]+", " ", without_accents).strip()
