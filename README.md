@@ -73,3 +73,55 @@ Pipeline:
 
 If `SUPERMEMORY_ENABLED=false` or the API key is missing, the pipeline falls back
 to the local-only behavior.
+
+## Auth Service
+
+The auth service issues local JWT access tokens and refresh tokens backed by
+PostgreSQL.
+
+Run locally:
+
+```powershell
+cd D:\Python\agent-governance-platform
+$env:PYTHONPATH='service/auth-service'
+.\venv\Scripts\python.exe -m uvicorn app.main:app --reload --port 8002
+```
+
+Or run with Docker Compose:
+
+```powershell
+docker compose up -d postgres auth-service
+```
+
+Register:
+
+```http
+POST http://localhost:8002/api/v1/auth/register
+```
+
+```json
+{
+  "email": "employee@example.com",
+  "password": "Password123!",
+  "full_name": "Employee One",
+  "role": "employee",
+  "scopes": ["agent:run", "customer:read"]
+}
+```
+
+Main endpoints:
+
+```text
+POST /api/v1/auth/register
+POST /api/v1/auth/login
+POST /api/v1/auth/refresh
+POST /api/v1/auth/logout
+GET  /api/v1/auth/me
+POST /api/v1/auth/introspect
+```
+
+Use the returned access token as:
+
+```http
+Authorization: Bearer <access_token>
+```

@@ -24,6 +24,31 @@ services:
     volumes:
       - ollama_data:/root/.ollama
 
+  auth-service:
+    build:
+      context: ./service/auth-service
+    container_name: agent-governance-auth-service
+    environment:
+      PROJECT_NAME: auth-service
+      API_V1_STR: /api/v1
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_DB: agent_governance
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: change-me
+      DATABASE_ECHO: "false"
+      JWT_SECRET_KEY: change-this-secret-in-production-at-least-32-chars
+      JWT_ISSUER: agent-governance-auth
+      ACCESS_TOKEN_EXPIRE_MINUTES: 30
+      REFRESH_TOKEN_EXPIRE_DAYS: 7
+      DEFAULT_USER_ROLE: employee
+      DEFAULT_USER_SCOPES: "agent:run customer:read"
+    ports:
+      - "8002:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
 volumes:
   postgres_data:
   ollama_data:
