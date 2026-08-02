@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Response, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -123,6 +123,15 @@ def logout(payload: LogoutRequest, db: Session = Depends(get_db)) -> dict[str, b
 @router.get("/me", response_model=UserPublic)
 def me(current_user: User = Depends(get_current_user)) -> UserPublic:
     return user_to_public(current_user)
+
+
+@router.get("/verify", status_code=status.HTTP_204_NO_CONTENT)
+def verify(response: Response, current_user: User = Depends(get_current_user)) -> Response:
+    response.headers["X-User-Id"] = str(current_user.id)
+    response.headers["X-User-Email"] = current_user.email
+    response.headers["X-User-Role"] = current_user.role
+    response.headers["X-User-Scopes"] = current_user.scopes
+    return response
 
 
 @router.post("/introspect", response_model=IntrospectResponse)

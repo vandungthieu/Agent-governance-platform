@@ -49,6 +49,52 @@ services:
       postgres:
         condition: service_healthy
 
+  agent-orchestrator:
+    build:
+      context: ./service/agent-orchestrator
+    container_name: agent-governance-agent-orchestrator
+    environment:
+      PROJECT_NAME: agent-orchestrator
+      API_V1_STR: /api/v1
+      LLM_PROVIDER: ollama
+      OLLAMA_BASE_URL: http://host.docker.internal:11434
+      OLLAMA_MODEL: qwen2.5:7b-instruct
+      LLM_TIMEOUT_SECONDS: 180
+      EMBEDDING_PROVIDER: ollama
+      OLLAMA_EMBEDDING_MODEL: nomic-embed-text
+      EMBEDDING_DIMENSIONS: 768
+      EMBEDDING_TIMEOUT_SECONDS: 120
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_DB: agent_governance
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: change-me
+      DATABASE_ECHO: "false"
+      WEB_SEARCH_ENABLED: "true"
+      WEB_SEARCH_TIMEOUT_SECONDS: 10
+      WEB_SEARCH_MAX_RESULTS: 5
+      SUPERMEMORY_ENABLED: "false"
+      SUPERMEMORY_API_KEY: ""
+      SUPERMEMORY_BASE_URL: https://api.supermemory.ai
+      SUPERMEMORY_TIMEOUT_SECONDS: 15
+      SUPERMEMORY_CONTAINER_PREFIX: agent-governance
+    ports:
+      - "8001:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  nginx:
+    image: nginx:1.27-alpine
+    container_name: agent-governance-nginx
+    ports:
+      - "8080:80"
+    volumes:
+      - ./infra/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      - auth-service
+      - agent-orchestrator
+
 volumes:
   postgres_data:
   ollama_data:

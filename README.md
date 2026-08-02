@@ -125,3 +125,89 @@ Use the returned access token as:
 ```http
 Authorization: Bearer <access_token>
 ```
+
+## NGINX Edge Gateway
+
+The project can run without the Python api-gateway for now:
+
+```text
+Client
+-> NGINX
+-> auth-service for register/login/token
+-> NGINX auth_request verifies Bearer token through auth-service
+-> agent-orchestrator
+```
+
+Run:
+
+```powershell
+docker compose up -d postgres auth-service agent-orchestrator nginx
+```
+
+Register/login through NGINX:
+
+```http
+POST http://localhost:8080/api/v1/auth/register
+POST http://localhost:8080/api/v1/auth/login
+```
+
+Call the agent through NGINX:
+
+```http
+POST http://localhost:8080/api/v1/run
+Authorization: Bearer <access_token>
+Content-Type: application/json
+```
+
+```json
+{
+  "session_id": "session_001",
+  "user_id": "employee_001",
+  "input_text": "bao lau toi nhan duoc the"
+}
+```
+
+NGINX verifies the token by calling:
+
+```text
+GET /api/v1/auth/verify
+```
+
+inside auth-service. If the token is valid, NGINX forwards user context headers:
+
+```text
+X-User-Id
+X-User-Email
+X-User-Role
+X-User-Scopes
+```
+
+## Reference Resolution
+
+Before routing to agents, the orchestrator resolves simple follow-up references
+from memory context.
+
+Example:
+
+```text
+Memory context:
+- Assistant answered: Điện thoại của khách hàng John Smith là +84901111222.
+
+New input:
+email của khách hàng đó là gì?
+
+Resolved input:
+email của khách hàng John Smith là gì?
+```
+
+This happens in:
+
+```text
+app/memory/reference_resolver.py
+```
+
+and is called from:
+
+```text
+app/api.py
+```

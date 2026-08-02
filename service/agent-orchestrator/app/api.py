@@ -7,7 +7,7 @@ from app.db.repositories import complete_agent_run, create_agent_run, fail_agent
 from app.db.session import check_db_connection
 from app.db.session import get_db
 from app.graphs.workflow import WorkflowGraph
-from app.memory import SupermemoryClient
+from app.memory import SupermemoryClient, resolve_reference
 from app.states.workflow import WorkflowRequest, WorkflowResponse
 from app.telemetry import reset_telemetry_context, set_telemetry_context, timed_ms
 from app.tools import default_tool_registry
@@ -51,10 +51,16 @@ def run_workflow(payload: WorkflowRequest, db: Session = Depends(get_db)):
         user_id=payload.user_id,
         session_id=payload.session_id,
     )
+    resolved_input_text = resolve_reference(payload.input_text, memory_context)
+    if resolved_input_text != payload.input_text:
+        memory_context = (
+            f"{memory_context}\n\n"
+            f"Resolved user request: {resolved_input_text}"
+        ).strip()
 
     try:
         route, task_type, workflow_plan, summary, specialist_results, final_answer = graph.execute(
-            payload.input_text,
+            resolved_input_text,
             memory_context=memory_context,
         )
         complete_agent_run(
