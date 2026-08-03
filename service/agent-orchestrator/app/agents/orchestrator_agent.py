@@ -30,21 +30,27 @@ class OrchestratorAgent(BaseAgent):
     def classify_task(self, input_text: str) -> TaskType:
         text = input_text.lower()
 
+        if self._is_realtime_web_query(text):
+            return TaskType.orchestrator_direct_response
+
         if self._contains_any(
             text,
             [
                 "mask",
                 "an danh",
                 "che thong tin",
-                "cccd",
-                "cmnd",
-                "so dien thoai",
-                "sdt",
-                "phone",
+                "ma hoa",
+                "bao mat thong tin",
+                "bao ve thong tin",
+                "redact",
+                "redaction",
                 "pii",
             ],
         ):
             return TaskType.customer_data_masking
+
+        if self._looks_like_customer_profile_lookup(text):
+            return TaskType.customer_profile_review
 
         if self._contains_any(
             text,
@@ -145,6 +151,80 @@ class OrchestratorAgent(BaseAgent):
             return TaskType.general_banking_knowledge
 
         return TaskType.orchestrator_direct_response
+
+    def _is_realtime_web_query(self, text: str) -> bool:
+        realtime_terms = [
+            "thoi tiet",
+            "thời tiết",
+            "nhiet do",
+            "nhiệt độ",
+            "du bao",
+            "dự báo",
+            "hom nay",
+            "hôm nay",
+            "hien tai",
+            "hiện tại",
+            "hien nay",
+            "hiện nay",
+            "moi nhat",
+            "mới nhất",
+            "tin moi",
+            "tin mới",
+            "cap nhat",
+            "cập nhật",
+            "gia vang",
+            "giá vàng",
+            "ty gia",
+            "tỷ giá",
+        ]
+        return self._contains_any(text, realtime_terms)
+
+    def _looks_like_customer_profile_lookup(self, text: str) -> bool:
+        has_customer_reference = self._contains_any(
+            text,
+            [
+                "khach hang",
+                "khách hàng",
+                "customer",
+                "anh ta",
+                "ong ay",
+                "ông ấy",
+                "ong ta",
+                "ông ta",
+                "chi ay",
+                "chị ấy",
+                "co ay",
+                "cô ấy",
+                "nguoi do",
+                "người đó",
+                "nguoi nay",
+                "người này",
+            ],
+        )
+        has_profile_field = self._contains_any(
+            text,
+            [
+                "cccd",
+                "cmnd",
+                "so dien thoai",
+                "sdt",
+                "phone",
+                "dien thoai",
+                "email",
+                "dia chi",
+                "address",
+                "so tai khoan",
+                "ngay sinh",
+                "nam sinh",
+                "sinh nam",
+                "nghe nghiep",
+                "trang thai",
+                "phan hang",
+                "thong tin",
+                "ho so",
+            ],
+        )
+        return has_customer_reference and has_profile_field
 
     def build_plan(self, input_text: str) -> list[str]:
         task_type = self.classify_task(input_text)
@@ -258,6 +338,12 @@ class OrchestratorAgent(BaseAgent):
         return self._contains_any(
             text,
             [
+                "thoi tiet",
+                "thời tiết",
+                "nhiet do",
+                "nhiệt độ",
+                "du bao",
+                "dự báo",
                 "moi nhat",
                 "mới nhất",
                 "hien nay",
@@ -271,7 +357,7 @@ class OrchestratorAgent(BaseAgent):
                 "hôm nay",
                 "hom nay",
                 "hien tai",
-                "bây giờ"
+                "bây giờ",
                 "web",
                 "public",
                 "cong khai",

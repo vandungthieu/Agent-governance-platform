@@ -184,6 +184,7 @@ class CustomerDataGuardAgent(BaseAgent):
             ("Địa chỉ", ["dia chi", "address"]),
             ("Số tài khoản", ["so tai khoan", "account number"]),
             ("Ngày sinh", ["ngay sinh", "sinh nam", "nam sinh", "birth"]),
+            ("Nghề nghiệp", ["nghe nghiep", "nghề nghiệp", "job", "occupation", "profession"]),
             ("Trạng thái", ["trang thai", "status"]),
             ("Phân hạng", ["phan hang", "segment", "vip"]),
         ]

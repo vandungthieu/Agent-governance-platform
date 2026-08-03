@@ -17,6 +17,17 @@ REFERENCE_PATTERNS = [
     r"nguoi nay",
     r"người ấy",
     r"nguoi ay",
+    r"anh ta",
+    r"ông ấy",
+    r"ong ay",
+    r"ông ta",
+    r"ong ta",
+    r"chị ấy",
+    r"chi ay",
+    r"cô ấy",
+    r"co ay",
+    r"người này",
+    r"nguoi nay",
     r"customer đó",
     r"customer do",
     r"customer này",
@@ -74,7 +85,7 @@ def latest_customer_name(memory_context: str) -> str | None:
 def clean_customer_name(value: str) -> str | None:
     cleaned = value.strip(" .,!?:;\"'`|")
     cleaned = re.sub(
-        r"\s+(?:là|la|có|co|sinh|năm|nam|email|số|so|điện|dien|địa|dia|trạng|trang)\b.*$",
+        r"\s+(?:là|la|có|co|đã|da|được|duoc|mã|ma|sinh|năm|nam|email|số|so|điện|dien|địa|dia|trạng|trang)\b.*$",
         "",
         cleaned,
         flags=re.IGNORECASE,
