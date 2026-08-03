@@ -1,213 +1,235 @@
 # Agent Governance Platform
 
-## RAG chunking + vector DB
+Agent Governance Platform is a production-oriented backend platform for building governed multi-agent AI assistants in enterprise environments.
 
-The agent orchestrator stores internal knowledge in PostgreSQL with the `pgvector`
-extension. Text or Markdown files are split into overlapping chunks, embedded with
-Ollama, and searched with vector similarity. If embeddings or the vector index are
-not available, `knowledge.search` falls back to PostgreSQL full-text search.
+Instead of being a simple chatbot wrapper around an LLM, this project focuses on the backend concerns required to run AI agents safely and observably: authentication, role-aware access, RAG over internal documents, long-term memory, request tracing, tool execution, vector search, and gateway-level token verification.
 
-### Local setup
+The current domain is banking operations, but the architecture is intentionally modular so the same foundation can be reused for other business domains.
 
-```powershell
-docker compose up -d postgres ollama
-```
+## Why This Project Matters
 
-Pull an embedding model once:
+Most AI chatbot demos stop at prompt engineering. This project explores what is needed around the model to make an AI assistant useful in a real organization:
 
-```powershell
-docker compose exec ollama ollama pull nomic-embed-text
-```
+- Requests are authenticated before reaching internal agents.
+- User roles and scopes can be enforced through an auth layer.
+- Agents retrieve trusted knowledge from internal documents instead of relying only on model memory.
+- Customer data and public banking knowledge are handled through separate agent workflows.
+- Simple structured lookups can bypass the LLM for faster and more deterministic answers.
+- Every workflow step, model call, and tool call can be traced for debugging and audit.
+- The backend can be exposed through real channels such as web apps, Telegram, or Zalo.
 
-Create/update database tables and the vector index:
-
-```powershell
-$env:PYTHONPATH='service/agent-orchestrator'
-$env:POSTGRES_PORT='5433'
-.\venv\Scripts\python.exe -m app.db.init_db
-```
-
-Ingest a document:
-
-```powershell
-$env:PYTHONPATH='service/agent-orchestrator'
-$env:POSTGRES_PORT='5433'
-.\venv\Scripts\python.exe -m app.rag.ingest_text service\agent-orchestrator\sample_knowledge\banking_process.md --document-type process
-```
-
-Use `--skip-embeddings` to ingest chunks without calling Ollama.
-
-## Optional Supermemory Pipeline
-
-Supermemory can be used as an external conversation memory layer. The local
-PostgreSQL/pgvector RAG remains available for internal documents.
-
-Enable it in `service/agent-orchestrator/.env`:
-
-```env
-SUPERMEMORY_ENABLED=true
-SUPERMEMORY_API_KEY=sm_your_api_key_here
-SUPERMEMORY_BASE_URL=https://api.supermemory.ai
-SUPERMEMORY_TIMEOUT_SECONDS=15
-SUPERMEMORY_CONTAINER_PREFIX=agent-governance
-```
-
-Send a stable `session_id` or `user_id` with each request:
-
-```json
-{
-  "session_id": "session_001",
-  "user_id": "employee_001",
-  "input_text": "email cua khach hang do la gi?"
-}
-```
-
-Pipeline:
+## System Flow
 
 ```text
-/api/v1/run
--> recall profile/relevant memories from Supermemory
--> run orchestrator and specialist agents with memory_context
--> store the user/assistant turn back into Supermemory
+Client / Chat Channel
+        |
+        v
+      NGINX
+        |
+        +--> Auth Service
+        |       |
+        |       +--> JWT / roles / scopes
+        |
+        v
+ Agent Orchestrator
+        |
+        +--> Banking Knowledge Agent
+        |       +--> RAG / PostgreSQL / pgvector
+        |
+        +--> Customer Data Agent
+        |       +--> Direct parser / structured lookup
+        |
+        +--> Memory Layer
+        |       +--> Supermemory
+        |
+        +--> Ollama
+                +--> chat model / embedding model
 ```
 
-If `SUPERMEMORY_ENABLED=false` or the API key is missing, the pipeline falls back
-to the local-only behavior.
-
-## Auth Service
-
-The auth service issues local JWT access tokens and refresh tokens backed by
-PostgreSQL.
-
-Run locally:
-
-```powershell
-cd D:\Python\agent-governance-platform
-$env:PYTHONPATH='service/auth-service'
-.\venv\Scripts\python.exe -m uvicorn app.main:app --reload --port 8002
-```
-
-Or run with Docker Compose:
-
-```powershell
-docker compose up -d postgres auth-service
-```
-
-Register:
-
-```http
-POST http://localhost:8002/api/v1/auth/register
-```
-
-```json
-{
-  "email": "employee@example.com",
-  "password": "Password123!",
-  "full_name": "Employee One",
-  "role": "employee",
-  "scopes": ["agent:run", "customer:read"]
-}
-```
-
-Main endpoints:
+Typical request lifecycle:
 
 ```text
-POST /api/v1/auth/register
-POST /api/v1/auth/login
-POST /api/v1/auth/refresh
-POST /api/v1/auth/logout
-GET  /api/v1/auth/me
-POST /api/v1/auth/introspect
+Client sends input
+-> NGINX verifies access token through auth-service
+-> agent-orchestrator recalls memory context
+-> reference resolver rewrites follow-up questions when needed
+-> orchestrator classifies and routes the task
+-> specialist agent retrieves knowledge or parses structured data
+-> LLM is called only when generation or reasoning is needed
+-> telemetry is stored
+-> final answer is returned
 ```
 
-Use the returned access token as:
+## Key Engineering Highlights
 
-```http
-Authorization: Bearer <access_token>
-```
+- Designed a modular multi-service backend with clear service boundaries.
+- Implemented JWT-based authentication with access tokens, refresh tokens, roles, and scopes.
+- Replaced the temporary Python API gateway with NGINX `auth_request` token verification.
+- Built a RAG pipeline with Markdown chunking, Ollama embeddings, PostgreSQL, and pgvector.
+- Added vector search with lexical reranking for Vietnamese banking knowledge.
+- Implemented fast-path parsers for structured customer-data and FAQ lookups to reduce unnecessary LLM calls.
+- Integrated optional long-term memory through Supermemory.
+- Added reference resolution so follow-up questions like "email của khách hàng đó là gì?" can be resolved from memory context.
+- Added telemetry tables for request tracing, workflow timing, model calls, and tool calls.
+- Containerized the main services with Docker Compose.
 
-## NGINX Edge Gateway
+## Core Features
 
-The project can run without the Python api-gateway for now:
+- Multi-agent orchestration for banking knowledge and customer-data workflows.
+- Auth service for employee login, token issuing, token verification, and user context.
+- NGINX edge gateway for protected internal APIs.
+- RAG over internal Markdown documents.
+- PostgreSQL/pgvector vector database for semantic retrieval.
+- Ollama integration for local chat and embedding models.
+- Supermemory integration for optional long-term conversation memory.
+- Deterministic direct lookup path for known structured questions.
+- Telemetry and audit-friendly traces for debugging slow or incorrect requests.
+- Adapter-friendly backend design for web, Telegram, Zalo, or mobile clients.
+- Telegram webhook adapter for routing chat messages into the agent workflow.
+
+## Example Use Cases
+
+### Banking FAQ
 
 ```text
-Client
--> NGINX
--> auth-service for register/login/token
--> NGINX auth_request verifies Bearer token through auth-service
--> agent-orchestrator
+User:
+bao lâu tôi nhận được thẻ?
+
+System:
+routes to BankingKnowledgeAgent
+-> retrieves the matching FAQ chunk
+-> returns the answer from internal knowledge
 ```
 
-Run:
-
-```powershell
-docker compose up -d postgres auth-service agent-orchestrator nginx
-```
-
-Register/login through NGINX:
-
-```http
-POST http://localhost:8080/api/v1/auth/register
-POST http://localhost:8080/api/v1/auth/login
-```
-
-Call the agent through NGINX:
-
-```http
-POST http://localhost:8080/api/v1/run
-Authorization: Bearer <access_token>
-Content-Type: application/json
-```
-
-```json
-{
-  "session_id": "session_001",
-  "user_id": "employee_001",
-  "input_text": "bao lau toi nhan duoc the"
-}
-```
-
-NGINX verifies the token by calling:
+### Customer Data Lookup
 
 ```text
-GET /api/v1/auth/verify
+User:
+số điện thoại của khách hàng John Smith
+
+System:
+routes to CustomerDataAgent
+-> reconstructs the customer profile section
+-> parses the Điện thoại field
+-> returns the exact value without calling the LLM
 ```
 
-inside auth-service. If the token is valid, NGINX forwards user context headers:
+### Follow-Up With Memory
 
 ```text
-X-User-Id
-X-User-Email
-X-User-Role
-X-User-Scopes
-```
+User:
+số điện thoại của John Smith?
 
-## Reference Resolution
-
-Before routing to agents, the orchestrator resolves simple follow-up references
-from memory context.
-
-Example:
-
-```text
-Memory context:
-- Assistant answered: Điện thoại của khách hàng John Smith là +84901111222.
-
-New input:
+User:
 email của khách hàng đó là gì?
 
-Resolved input:
+System:
+uses memory context
+-> resolves "khách hàng đó" to "John Smith"
+-> runs the correct customer-data workflow
+```
+
+## Main Components
+
+### NGINX
+
+Acts as the edge gateway:
+
+- Proxies public auth endpoints to auth-service.
+- Verifies Bearer tokens through auth-service.
+- Forwards valid requests to agent-orchestrator.
+
+### Auth Service
+
+Handles identity and access:
+
+- Register and login.
+- Access token and refresh token issuing.
+- Token verification and introspection.
+- Role and scope management.
+
+### Agent Orchestrator
+
+Coordinates the AI workflow:
+
+- Receives authenticated user requests.
+- Recalls memory context.
+- Resolves follow-up references.
+- Classifies and routes tasks.
+- Calls specialist agents, tools, RAG, direct parsers, or LLMs.
+- Stores telemetry for each request.
+
+### Specialist Agents
+
+Current agents:
+
+- `BankingKnowledgeAgent`: answers questions about banking processes, public references, FAQs, and product knowledge.
+- `CustomerDataGuardAgent`: handles customer profile questions and structured customer-data lookup.
+
+### RAG And Vector DB
+
+Internal documents are processed through:
+
+```text
+Markdown document
+-> chunking
+-> embedding with Ollama
+-> PostgreSQL/pgvector storage
+-> semantic retrieval during agent execution
+```
+
+### Memory
+
+Memory helps the assistant handle multi-turn conversations:
+
+```text
+User: số điện thoại của John Smith?
+Bot: ...
+
+User: email của khách hàng đó là gì?
+```
+
+The reference resolver can rewrite the second question into:
+
+```text
 email của khách hàng John Smith là gì?
 ```
 
-This happens in:
+## Tech Stack
+
+- Python
+- FastAPI
+- LangGraph
+- PostgreSQL
+- pgvector
+- SQLAlchemy
+- Ollama
+- Supermemory
+- NGINX
+- Docker Compose
+
+## Project Structure
 
 ```text
-app/memory/reference_resolver.py
+service/
+  auth-service/             Authentication and token management
+  agent-orchestrator/       Multi-agent workflow, RAG, memory, telemetry
+  telegram-adapter/         Telegram webhook adapter for chat integration
+  api-gateway/              Earlier Python gateway, currently replaceable by NGINX
+  audit-service/            Future production audit boundary
+  guardrail-service/        Future production guardrail boundary
+
+infra/
+  nginx/                    NGINX gateway configuration
+
+docs/
+  architecture.md           Technical architecture and runbook
 ```
 
-and is called from:
+## Technical Documentation
+
+Detailed setup commands, Docker Compose configuration, ports, database tables, RAG ingest commands, Supermemory settings, and telemetry SQL are documented in:
 
 ```text
-app/api.py
+docs/architecture.md
 ```
