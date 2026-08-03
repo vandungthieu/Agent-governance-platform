@@ -126,12 +126,16 @@ def me(current_user: User = Depends(get_current_user)) -> UserPublic:
 
 
 @router.get("/verify", status_code=status.HTTP_204_NO_CONTENT)
-def verify(response: Response, current_user: User = Depends(get_current_user)) -> Response:
-    response.headers["X-User-Id"] = str(current_user.id)
-    response.headers["X-User-Email"] = current_user.email
-    response.headers["X-User-Role"] = current_user.role
-    response.headers["X-User-Scopes"] = current_user.scopes
-    return response
+def verify(current_user: User = Depends(get_current_user)) -> Response:
+    return Response(
+        status_code=status.HTTP_204_NO_CONTENT,
+        headers={
+            "X-User-Id": str(current_user.id),
+            "X-User-Email": current_user.email,
+            "X-User-Role": current_user.role,
+            "X-User-Scopes": current_user.scopes,
+        },
+    )
 
 
 @router.post("/introspect", response_model=IntrospectResponse)
