@@ -24,11 +24,19 @@ def complete_agent_run(
     agent_run: AgentRun,
     route: str,
     task_type: str,
+    intent: str | None,
+    intent_confidence: float | None,
+    routing_source: str | None,
+    retrieval_document_type: str | None,
     final_answer: str,
     duration_ms: float,
 ) -> AgentRun:
     agent_run.route = route
     agent_run.task_type = task_type
+    agent_run.intent = intent
+    agent_run.intent_confidence = intent_confidence
+    agent_run.routing_source = routing_source
+    agent_run.retrieval_document_type = retrieval_document_type
     agent_run.final_answer = final_answer
     agent_run.status = "completed"
     agent_run.duration_ms = duration_ms
@@ -51,4 +59,3 @@ def fail_agent_run(
     db.commit()
     db.refresh(agent_run)
     return agent_run
-

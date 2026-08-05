@@ -53,7 +53,7 @@ Client sends input
 -> NGINX verifies access token through auth-service
 -> agent-orchestrator recalls memory context
 -> reference resolver rewrites follow-up questions when needed
--> orchestrator classifies and routes the task
+-> hybrid intent router classifies and routes the task
 -> specialist agent retrieves knowledge or parses structured data
 -> LLM is called only when generation or reasoning is needed
 -> telemetry is stored
@@ -67,6 +67,7 @@ Client sends input
 - Replaced the temporary Python API gateway with NGINX `auth_request` token verification.
 - Built a RAG pipeline with Markdown chunking, Ollama embeddings, PostgreSQL, and pgvector.
 - Added vector search with lexical reranking for Vietnamese banking knowledge.
+- Upgraded routing from keyword-only rules to hybrid intent routing with semantic examples, rule fallback, and LLM planner fallback for ambiguous requests.
 - Implemented fast-path parsers for structured customer-data and FAQ lookups to reduce unnecessary LLM calls.
 - Integrated optional long-term memory through Supermemory.
 - Added reference resolution so follow-up questions like "email của khách hàng đó là gì?" can be resolved from memory context.
@@ -76,6 +77,7 @@ Client sends input
 ## Core Features
 
 - Multi-agent orchestration for banking knowledge and customer-data workflows.
+- Hybrid intent routing with high-confidence rules, semantic examples, and LLM planner fallback.
 - Auth service for employee login, token issuing, token verification, and user context.
 - NGINX edge gateway for protected internal APIs.
 - RAG over internal Markdown documents.

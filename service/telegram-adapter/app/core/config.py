@@ -10,6 +10,7 @@ class Settings(BaseSettings):
     AGENT_API_URL: str = "http://agent-orchestrator:8000/api/v1/run"
     AGENT_API_BEARER_TOKEN: str = ""
     HTTP_TIMEOUT_SECONDS: int = 300
+    PROCESSED_UPDATE_CACHE_SIZE: int = 1000
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 

@@ -3,15 +3,15 @@ services:
     image: pgvector/pgvector:pg16
     container_name: agent-governance-postgres
     environment:
-      POSTGRES_DB: agent_governance
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: change-me
+      POSTGRES_DB: ${POSTGRES_DB:-agent_governance}
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in root .env or PowerShell before running docker compose}
     ports:
       - "5433:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres -d agent_governance"]
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -29,20 +29,20 @@ services:
       context: ./service/auth-service
     container_name: agent-governance-auth-service
     environment:
-      PROJECT_NAME: auth-service
-      API_V1_STR: /api/v1
-      POSTGRES_HOST: postgres
-      POSTGRES_PORT: 5432
-      POSTGRES_DB: agent_governance
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: change-me
-      DATABASE_ECHO: "false"
-      JWT_SECRET_KEY: change-this-secret-in-production-at-least-32-chars
-      JWT_ISSUER: agent-governance-auth
-      ACCESS_TOKEN_EXPIRE_MINUTES: 30
-      REFRESH_TOKEN_EXPIRE_DAYS: 7
-      DEFAULT_USER_ROLE: employee
-      DEFAULT_USER_SCOPES: "agent:run customer:read"
+      PROJECT_NAME: ${AUTH_PROJECT_NAME:-auth-service}
+      API_V1_STR: ${API_V1_STR:-/api/v1}
+      POSTGRES_HOST: ${POSTGRES_HOST:-postgres}
+      POSTGRES_PORT: ${POSTGRES_CONTAINER_PORT:-5432}
+      POSTGRES_DB: ${POSTGRES_DB:-agent_governance}
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in root .env or PowerShell before running docker compose}
+      DATABASE_ECHO: ${DATABASE_ECHO:-false}
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY:?Set JWT_SECRET_KEY in root .env or PowerShell before running docker compose}
+      JWT_ISSUER: ${JWT_ISSUER:-agent-governance-auth}
+      ACCESS_TOKEN_EXPIRE_MINUTES: ${ACCESS_TOKEN_EXPIRE_MINUTES:-30}
+      REFRESH_TOKEN_EXPIRE_DAYS: ${REFRESH_TOKEN_EXPIRE_DAYS:-7}
+      DEFAULT_USER_ROLE: ${DEFAULT_USER_ROLE:-employee}
+      DEFAULT_USER_SCOPES: ${DEFAULT_USER_SCOPES:-agent:run customer:read}
     ports:
       - "8002:8000"
     depends_on:
@@ -54,30 +54,30 @@ services:
       context: ./service/agent-orchestrator
     container_name: agent-governance-agent-orchestrator
     environment:
-      PROJECT_NAME: agent-orchestrator
-      API_V1_STR: /api/v1
-      LLM_PROVIDER: ollama
-      OLLAMA_BASE_URL: http://host.docker.internal:11434
-      OLLAMA_MODEL: qwen2.5:7b-instruct
-      LLM_TIMEOUT_SECONDS: 180
-      EMBEDDING_PROVIDER: ollama
-      OLLAMA_EMBEDDING_MODEL: nomic-embed-text
-      EMBEDDING_DIMENSIONS: 768
-      EMBEDDING_TIMEOUT_SECONDS: 120
-      POSTGRES_HOST: postgres
-      POSTGRES_PORT: 5432
-      POSTGRES_DB: agent_governance
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: change-me
-      DATABASE_ECHO: "false"
-      WEB_SEARCH_ENABLED: "true"
-      WEB_SEARCH_TIMEOUT_SECONDS: 10
-      WEB_SEARCH_MAX_RESULTS: 5
-      SUPERMEMORY_ENABLED: "false"
-      SUPERMEMORY_API_KEY: ""
-      SUPERMEMORY_BASE_URL: https://api.supermemory.ai
-      SUPERMEMORY_TIMEOUT_SECONDS: 15
-      SUPERMEMORY_CONTAINER_PREFIX: agent-governance
+      PROJECT_NAME: ${AGENT_PROJECT_NAME:-agent-orchestrator}
+      API_V1_STR: ${API_V1_STR:-/api/v1}
+      LLM_PROVIDER: ${LLM_PROVIDER:-ollama}
+      OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
+      OLLAMA_MODEL: ${OLLAMA_MODEL:-qwen2.5:7b-instruct}
+      LLM_TIMEOUT_SECONDS: ${LLM_TIMEOUT_SECONDS:-180}
+      EMBEDDING_PROVIDER: ${EMBEDDING_PROVIDER:-ollama}
+      OLLAMA_EMBEDDING_MODEL: ${OLLAMA_EMBEDDING_MODEL:-nomic-embed-text}
+      EMBEDDING_DIMENSIONS: ${EMBEDDING_DIMENSIONS:-768}
+      EMBEDDING_TIMEOUT_SECONDS: ${EMBEDDING_TIMEOUT_SECONDS:-120}
+      POSTGRES_HOST: ${POSTGRES_HOST:-postgres}
+      POSTGRES_PORT: ${POSTGRES_CONTAINER_PORT:-5432}
+      POSTGRES_DB: ${POSTGRES_DB:-agent_governance}
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in root .env or PowerShell before running docker compose}
+      DATABASE_ECHO: ${DATABASE_ECHO:-false}
+      WEB_SEARCH_ENABLED: ${WEB_SEARCH_ENABLED:-true}
+      WEB_SEARCH_TIMEOUT_SECONDS: ${WEB_SEARCH_TIMEOUT_SECONDS:-10}
+      WEB_SEARCH_MAX_RESULTS: ${WEB_SEARCH_MAX_RESULTS:-5}
+      SUPERMEMORY_ENABLED: ${SUPERMEMORY_ENABLED:-false}
+      SUPERMEMORY_API_KEY: ${SUPERMEMORY_API_KEY:-}
+      SUPERMEMORY_BASE_URL: ${SUPERMEMORY_BASE_URL:-https://api.supermemory.ai}
+      SUPERMEMORY_TIMEOUT_SECONDS: ${SUPERMEMORY_TIMEOUT_SECONDS:-15}
+      SUPERMEMORY_CONTAINER_PREFIX: ${SUPERMEMORY_CONTAINER_PREFIX:-agent-governance}
     ports:
       - "8001:8000"
     depends_on:
@@ -89,12 +89,12 @@ services:
       context: ./service/telegram-adapter
     container_name: agent-governance-telegram-adapter
     environment:
-      PROJECT_NAME: telegram-adapter
+      PROJECT_NAME: ${TELEGRAM_PROJECT_NAME:-telegram-adapter}
       TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
       TELEGRAM_WEBHOOK_SECRET: ${TELEGRAM_WEBHOOK_SECRET:-}
-      AGENT_API_URL: http://agent-orchestrator:8000/api/v1/run
-      AGENT_API_BEARER_TOKEN: ""
-      HTTP_TIMEOUT_SECONDS: 300
+      AGENT_API_URL: ${TELEGRAM_AGENT_API_URL:-http://agent-orchestrator:8000/api/v1/run}
+      AGENT_API_BEARER_TOKEN: ${TELEGRAM_AGENT_API_BEARER_TOKEN:-}
+      HTTP_TIMEOUT_SECONDS: ${TELEGRAM_HTTP_TIMEOUT_SECONDS:-300}
     ports:
       - "8003:8000"
     depends_on:

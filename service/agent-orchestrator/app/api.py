@@ -72,7 +72,18 @@ def run_workflow(payload: WorkflowRequest, db: Session = Depends(get_db)):
         ).strip()
 
     try:
-        route, task_type, workflow_plan, summary, specialist_results, final_answer = graph.execute(
+        (
+            route,
+            task_type,
+            intent,
+            intent_confidence,
+            routing_source,
+            retrieval_document_type,
+            workflow_plan,
+            summary,
+            specialist_results,
+            final_answer,
+        ) = graph.execute(
             resolved_input_text,
             memory_context=memory_context,
         )
@@ -81,6 +92,10 @@ def run_workflow(payload: WorkflowRequest, db: Session = Depends(get_db)):
             agent_run=agent_run,
             route=route.value,
             task_type=task_type.value,
+            intent=intent.value,
+            intent_confidence=intent_confidence,
+            routing_source=routing_source,
+            retrieval_document_type=retrieval_document_type,
             final_answer=final_answer,
             duration_ms=timed_ms(start_time),
         )
@@ -103,6 +118,10 @@ def run_workflow(payload: WorkflowRequest, db: Session = Depends(get_db)):
             user_id=payload.user_id,
             route=route,
             task_type=task_type,
+            intent=intent,
+            intent_confidence=intent_confidence,
+            routing_source=routing_source,
+            retrieval_document_type=retrieval_document_type,
             workflow_plan=workflow_plan,
             orchestrator_summary=summary,
             specialist_results=specialist_results,

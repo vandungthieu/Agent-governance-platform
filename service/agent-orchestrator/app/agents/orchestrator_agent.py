@@ -3,7 +3,8 @@ import unicodedata
 
 from app.agents.base import BaseAgent
 from app.llm import OllamaClient
-from app.states.workflow import AgentRole, TaskType
+from app.routing import LLMPlanner, SemanticIntentRouter
+from app.states.workflow import AgentRole, IntentType, RoutingDecision, TaskType
 from app.tools import ToolRegistry, default_tool_registry
 
 
@@ -12,26 +13,61 @@ class OrchestratorAgent(BaseAgent):
         self,
         llm: OllamaClient | None = None,
         tools: ToolRegistry | None = None,
+        semantic_router: SemanticIntentRouter | None = None,
+        llm_planner: LLMPlanner | None = None,
     ) -> None:
         self.llm = llm or OllamaClient()
         self.tools = tools or default_tool_registry
+        self.semantic_router = semantic_router or SemanticIntentRouter()
+        self.llm_planner = llm_planner or LLMPlanner(self.llm)
+
+    def decide(self, input_text: str, memory_context: str = "") -> RoutingDecision:
+        deterministic_decision = self._deterministic_decision(input_text)
+        if deterministic_decision.intent != IntentType.unknown:
+            return deterministic_decision
+
+        semantic_result = self.semantic_router.route(input_text)
+        if semantic_result is not None:
+            return self._decision_from_intent(
+                semantic_result.intent,
+                confidence=semantic_result.confidence,
+                routing_source=semantic_result.source,
+                reason=f"matched_example={semantic_result.matched_example}",
+            )
+
+        try:
+            planner_result = self.llm_planner.plan(input_text, memory_context=memory_context)
+            if planner_result.decision is not None and planner_result.decision.confidence >= 0.55:
+                return planner_result.decision
+        except Exception:
+            pass
+
+        return self._keyword_fallback_decision(input_text)
 
     def route(self, input_text: str) -> str:
-        task_type = self.classify_task(input_text)
-        if task_type == TaskType.orchestrator_direct_response:
-            return AgentRole.orchestrator.value
-        if task_type in {
-            TaskType.customer_data_masking,
-            TaskType.customer_profile_review,
-        }:
-            return AgentRole.customer_data_guard.value
-        return AgentRole.banking_knowledge.value
+        return self.decide(input_text).route.value
 
     def classify_task(self, input_text: str) -> TaskType:
+        return self.decide(input_text).task_type
+
+    def _deterministic_decision(self, input_text: str) -> RoutingDecision:
         text = input_text.lower()
 
         if self._is_realtime_web_query(text):
-            return TaskType.orchestrator_direct_response
+            return self._decision_from_intent(
+                IntentType.realtime_web,
+                confidence=0.98,
+                routing_source="rule",
+                reason="Detected realtime/public information request.",
+            )
+
+        if self._looks_like_owner_question(text):
+            return self._decision_from_intent(
+                IntentType.owner_question,
+                confidence=0.98,
+                routing_source="rule",
+                reason="Detected owner/project creator question.",
+            )
 
         if self._contains_any(
             text,
@@ -47,10 +83,25 @@ class OrchestratorAgent(BaseAgent):
                 "pii",
             ],
         ):
-            return TaskType.customer_data_masking
+            return self._decision_from_intent(
+                IntentType.masking_request,
+                confidence=0.98,
+                routing_source="rule",
+                reason="Detected explicit masking/redaction request.",
+            )
 
         if self._looks_like_customer_profile_lookup(text):
-            return TaskType.customer_profile_review
+            return self._decision_from_intent(
+                IntentType.customer_lookup,
+                confidence=0.98,
+                routing_source="rule",
+                reason="Detected structured customer-profile lookup.",
+            )
+
+        return RoutingDecision(intent=IntentType.unknown, confidence=0.0, routing_source="rule")
+
+    def _keyword_fallback_decision(self, input_text: str) -> RoutingDecision:
+        text = input_text.lower()
 
         if self._contains_any(
             text,
@@ -66,7 +117,12 @@ class OrchestratorAgent(BaseAgent):
                 "doi chieu khach hang",
             ],
         ):
-            return TaskType.customer_profile_review
+            return self._decision_from_intent(
+                IntentType.customer_lookup,
+                confidence=0.62,
+                routing_source="keyword_fallback",
+                reason="Matched customer profile keywords.",
+            )
 
         if self._contains_any(
             text,
@@ -82,7 +138,12 @@ class OrchestratorAgent(BaseAgent):
                 "ocr",
             ],
         ):
-            return TaskType.document_intelligence
+            return self._decision_from_intent(
+                IntentType.document_intelligence,
+                confidence=0.62,
+                routing_source="keyword_fallback",
+                reason="Matched document intelligence keywords.",
+            )
 
         if self._contains_any(
             text,
@@ -95,7 +156,12 @@ class OrchestratorAgent(BaseAgent):
                 "phan tich nganh",
             ],
         ):
-            return TaskType.research_report
+            return self._decision_from_intent(
+                IntentType.research_report,
+                confidence=0.62,
+                routing_source="keyword_fallback",
+                reason="Matched research/report keywords.",
+            )
 
         if self._contains_any(
             text,
@@ -109,7 +175,12 @@ class OrchestratorAgent(BaseAgent):
                 "banking process",
             ],
         ):
-            return TaskType.banking_process_support
+            return self._decision_from_intent(
+                IntentType.banking_faq,
+                confidence=0.62,
+                routing_source="keyword_fallback",
+                reason="Matched banking process/FAQ keywords.",
+            )
 
         if self._contains_any(
             text,
@@ -123,7 +194,12 @@ class OrchestratorAgent(BaseAgent):
                 "risk",
             ],
         ):
-            return TaskType.credit_risk_support
+            return self._decision_from_intent(
+                IntentType.credit_risk,
+                confidence=0.62,
+                routing_source="keyword_fallback",
+                reason="Matched credit risk keywords.",
+            )
 
         if self._contains_any(
             text,
@@ -148,9 +224,89 @@ class OrchestratorAgent(BaseAgent):
                 "compliance",
             ],
         ):
-            return TaskType.general_banking_knowledge
+            return self._decision_from_intent(
+                IntentType.banking_faq,
+                confidence=0.58,
+                routing_source="keyword_fallback",
+                reason="Matched general banking keywords.",
+            )
 
-        return TaskType.orchestrator_direct_response
+        return self._decision_from_intent(
+            IntentType.smalltalk,
+            confidence=0.45,
+            routing_source="keyword_fallback",
+            reason="No specialist intent matched.",
+        )
+
+    def _decision_from_intent(
+        self,
+        intent: IntentType,
+        confidence: float,
+        routing_source: str,
+        reason: str = "",
+    ) -> RoutingDecision:
+        mapping: dict[IntentType, tuple[AgentRole, TaskType, str | None]] = {
+            IntentType.customer_lookup: (
+                AgentRole.customer_data_guard,
+                TaskType.customer_profile_review,
+                "customer_profile",
+            ),
+            IntentType.masking_request: (
+                AgentRole.customer_data_guard,
+                TaskType.customer_data_masking,
+                "customer_profile",
+            ),
+            IntentType.banking_faq: (
+                AgentRole.banking_knowledge,
+                TaskType.banking_process_support,
+                "banking_faq",
+            ),
+            IntentType.owner_question: (
+                AgentRole.banking_knowledge,
+                TaskType.general_banking_knowledge,
+                "owner_profile",
+            ),
+            IntentType.realtime_web: (
+                AgentRole.orchestrator,
+                TaskType.orchestrator_direct_response,
+                None,
+            ),
+            IntentType.document_intelligence: (
+                AgentRole.banking_knowledge,
+                TaskType.document_intelligence,
+                "policy",
+            ),
+            IntentType.research_report: (
+                AgentRole.banking_knowledge,
+                TaskType.research_report,
+                "public_reference",
+            ),
+            IntentType.credit_risk: (
+                AgentRole.banking_knowledge,
+                TaskType.credit_risk_support,
+                "policy",
+            ),
+            IntentType.smalltalk: (
+                AgentRole.orchestrator,
+                TaskType.orchestrator_direct_response,
+                None,
+            ),
+            IntentType.unknown: (
+                AgentRole.orchestrator,
+                TaskType.orchestrator_direct_response,
+                None,
+            ),
+        }
+        route, task_type, document_type = mapping[intent]
+        return RoutingDecision(
+            intent=intent,
+            route=route,
+            task_type=task_type,
+            document_type=document_type,
+            confidence=confidence,
+            routing_source=routing_source,
+            reason=reason,
+        )
 
     def _is_realtime_web_query(self, text: str) -> bool:
         realtime_terms = [
@@ -178,6 +334,34 @@ class OrchestratorAgent(BaseAgent):
             "tỷ giá",
         ]
         return self._contains_any(text, realtime_terms)
+
+    def _looks_like_owner_question(self, text: str) -> bool:
+        owner_terms = [
+            "ai tao ra ban",
+            "ai tao ra he thong",
+            "ai tao ra du an",
+            "ai tao nen ban",
+            "ai tao nen he thong",
+            "ai tao nen du an",
+            "nguoi tao ra ban",
+            "nguoi tao ra he thong",
+            "nguoi tao ra du an",
+            "nguoi phat trien ban",
+            "nguoi phat trien he thong",
+            "nguoi phat trien du an",
+            "tac gia",
+            "author",
+            "owner",
+            "creator",
+            "developer cua ban",
+            "developer cua he thong",
+            "developer cua du an",
+            "du an nay cua ai",
+            "he thong nay cua ai",
+            "ban duoc tao boi ai",
+            "he thong duoc tao boi ai",
+        ]
+        return self._contains_any(text, owner_terms)
 
     def _looks_like_customer_profile_lookup(self, text: str) -> bool:
         has_customer_reference = self._contains_any(
@@ -228,6 +412,9 @@ class OrchestratorAgent(BaseAgent):
 
     def build_plan(self, input_text: str) -> list[str]:
         task_type = self.classify_task(input_text)
+        return self.build_plan_for_task(task_type)
+
+    def build_plan_for_task(self, task_type: TaskType) -> list[str]:
         plans = {
             TaskType.orchestrator_direct_response: [
                 "Recognize that the request is outside specialist agent boundaries.",
@@ -272,12 +459,20 @@ class OrchestratorAgent(BaseAgent):
         }
         return plans[task_type]
 
-    def summarize(self, input_text: str, memory_context: str = "") -> str:
-        route = self.route(input_text)
-        task_type = self.classify_task(input_text)
+    def summarize(
+        self,
+        input_text: str,
+        memory_context: str = "",
+        decision: RoutingDecision | None = None,
+    ) -> str:
+        decision = decision or self.decide(input_text, memory_context=memory_context)
+        route = decision.route.value
+        task_type = decision.task_type
         deterministic_summary = (
             f"Orchestrator classified task_type={task_type.value}, "
-            f"route={route}, input_length={len(input_text)}."
+            f"route={route}, intent={decision.intent.value}, "
+            f"confidence={decision.confidence:.2f}, source={decision.routing_source}, "
+            f"input_length={len(input_text)}."
         )
         if route != AgentRole.orchestrator.value:
             return deterministic_summary
@@ -286,7 +481,7 @@ class OrchestratorAgent(BaseAgent):
             input_text=input_text,
             route=route,
             task_type=task_type,
-            workflow_plan=self.build_plan(input_text),
+            workflow_plan=self.build_plan_for_task(task_type),
             memory_context=memory_context,
         )
         return f"{deterministic_summary} LLM rationale: {llm_summary}"
@@ -296,12 +491,13 @@ class OrchestratorAgent(BaseAgent):
         input_text: str,
         task_type: TaskType | None = None,
         memory_context: str = "",
+        decision: RoutingDecision | None = None,
     ) -> str:
-        return self.summarize(input_text, memory_context=memory_context)
+        return self.summarize(input_text, memory_context=memory_context, decision=decision)
 
     def answer_direct(self, input_text: str, memory_context: str = "") -> str:
         task_type = self.classify_task(input_text)
-        workflow_plan = self.build_plan(input_text)
+        workflow_plan = self.build_plan_for_task(task_type)
         web_results = self._search_web_if_needed(input_text)
         system_prompt = (
             "You are OrchestratorAgent for an internal finance and banking assistant. "

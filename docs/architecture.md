@@ -108,8 +108,13 @@ Chạy hạ tầng chính:
 
 ```powershell
 cd D:\Python\agent-governance-platform
+$env:POSTGRES_PASSWORD='<local-postgres-password>'
+$env:JWT_SECRET_KEY='<local-jwt-secret-at-least-32-chars>'
+$env:TELEGRAM_BOT_TOKEN='<bot-token-if-using-telegram>'
 docker compose up -d postgres auth-service agent-orchestrator telegram-adapter nginx
 ```
+
+`POSTGRES_PASSWORD` và `JWT_SECRET_KEY` là bắt buộc khi chạy Docker Compose. Các giá trị nhạy cảm này nên được set trong PowerShell hoặc file `.env` ở root dự án, không hard-code trong `docker-compose.yml`.
 
 Nếu dùng Ollama container:
 
@@ -314,8 +319,20 @@ Ingest tài liệu:
 ```powershell
 $env:PYTHONPATH='service/agent-orchestrator'
 $env:POSTGRES_PORT='5433'
-.\venv\Scripts\python.exe -m app.rag.ingest_text service\agent-orchestrator\sample_knowledge\account_opening.md --document-type public_reference --source-uri "MB public website"
+.\venv\Scripts\python.exe -m app.rag.ingest_text service\agent-orchestrator\sample_knowledge\account_opening.md --document-type banking_faq --source-uri "MB public website"
 ```
+
+Recommended document types:
+
+```text
+owner.md -> owner_profile
+account_opening.md -> banking_faq
+banking_process.md -> process
+customer data files -> customer_profile
+policy files -> policy
+```
+
+If `--document-type` is omitted, `ingest_text` infers common types from the file name.
 
 Ingest không tạo embedding:
 
@@ -349,6 +366,9 @@ LIMIT 1;
 
 ```text
 input_text
+-> memory reference resolution
+-> hybrid intent router
+-> route + task_type + document_type
 -> Ollama /api/embed
 -> query vector
 -> PostgreSQL pgvector cosine search
@@ -364,6 +384,41 @@ ORDER BY kc.embedding <=> CAST(:query_embedding AS vector)
 ```
 
 `kc` là alias SQL của bảng `knowledge_chunks`; `kd` là alias của `knowledge_documents`.
+
+## Hybrid Intent Routing
+
+Routing flow:
+
+```text
+input_text
+-> high-confidence deterministic rules
+-> semantic intent router using embedding examples
+-> LLM planner fallback for ambiguous requests
+-> keyword fallback if semantic/planner routing is unavailable
+```
+
+Main intents:
+
+```text
+customer_lookup
+masking_request
+banking_faq
+owner_question
+realtime_web
+document_intelligence
+research_report
+credit_risk
+smalltalk
+unknown
+```
+
+The router returns `intent`, `route`, `task_type`, `document_type`, `confidence`, and `routing_source`. `document_type` is used as a retrieval filter, for example:
+
+```text
+owner_question -> owner_profile
+banking_faq -> banking_faq
+customer_lookup -> customer_profile
+```
 
 ## Direct Answer Fast Path
 
@@ -455,6 +510,10 @@ SELECT
   trace_id,
   route,
   task_type,
+  intent,
+  intent_confidence,
+  routing_source,
+  retrieval_document_type,
   status,
   round(duration_ms::numeric, 2) AS duration_ms,
   started_at,

@@ -9,6 +9,10 @@ def init_db() -> None:
         connection.execute(text("CREATE EXTENSION IF NOT EXISTS vector"))
     Base.metadata.create_all(bind=engine)
     with engine.begin() as connection:
+        connection.execute(text("ALTER TABLE agent_runs ADD COLUMN IF NOT EXISTS intent VARCHAR(64)"))
+        connection.execute(text("ALTER TABLE agent_runs ADD COLUMN IF NOT EXISTS intent_confidence DOUBLE PRECISION"))
+        connection.execute(text("ALTER TABLE agent_runs ADD COLUMN IF NOT EXISTS routing_source VARCHAR(64)"))
+        connection.execute(text("ALTER TABLE agent_runs ADD COLUMN IF NOT EXISTS retrieval_document_type VARCHAR(64)"))
         connection.execute(
             text(
                 f"""

@@ -47,15 +47,21 @@ class WorkflowGraph:
         start_time = time.perf_counter()
         role_token = set_agent_role(AgentRole.orchestrator.value)
         try:
-            route = AgentRole(self.orchestrator.route(state.input_text))
-            task_type = self.orchestrator.classify_task(state.input_text)
+            decision = self.orchestrator.decide(state.input_text, memory_context=state.memory_context)
+            route = decision.route
+            task_type = decision.task_type
             node_output = {
                 "route": route,
                 "task_type": task_type,
-                "workflow_plan": self.orchestrator.build_plan(state.input_text),
+                "intent": decision.intent,
+                "intent_confidence": decision.confidence,
+                "routing_source": decision.routing_source,
+                "retrieval_document_type": decision.document_type,
+                "workflow_plan": self.orchestrator.build_plan_for_task(task_type),
                 "orchestrator_summary": self.orchestrator.run(
                     state.input_text,
                     memory_context=state.memory_context,
+                    decision=decision,
                 ),
             }
             if route == AgentRole.orchestrator:
@@ -141,6 +147,8 @@ class WorkflowGraph:
                             state.input_text,
                             state.task_type,
                             memory_context=state.memory_context,
+                            intent=state.intent,
+                            document_type=state.retrieval_document_type,
                         ),
                     }
                 ]
@@ -221,11 +229,15 @@ class WorkflowGraph:
         self,
         input_text: str,
         memory_context: str = "",
-    ) -> tuple[AgentRole, object, list[str], str, list, str]:
+    ) -> tuple[AgentRole, object, object, float, str, str | None, list[str], str, list, str]:
         result = self.graph.invoke({"input_text": input_text, "memory_context": memory_context})
         return (
             result["route"],
             result["task_type"],
+            result["intent"],
+            result["intent_confidence"],
+            result["routing_source"],
+            result.get("retrieval_document_type"),
             result["workflow_plan"],
             result["orchestrator_summary"],
             result["specialist_results"],
