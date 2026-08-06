@@ -26,23 +26,32 @@ class OrchestratorAgent(BaseAgent):
         if deterministic_decision.intent != IntentType.unknown:
             return deterministic_decision
 
-        semantic_result = self.semantic_router.route(input_text)
-        if semantic_result is not None:
+        semantic_result = self.semantic_router.evaluate(input_text)
+        if semantic_result.intent != IntentType.unknown and semantic_result.confidence >= self.semantic_router.threshold:
             return self._decision_from_intent(
                 semantic_result.intent,
                 confidence=semantic_result.confidence,
                 routing_source=semantic_result.source,
                 reason=f"matched_example={semantic_result.matched_example}",
+                matched_example=semantic_result.matched_example,
+                semantic_candidates=semantic_result.candidates or [],
             )
 
+        planner_raw_output: str | None = None
         try:
             planner_result = self.llm_planner.plan(input_text, memory_context=memory_context)
+            planner_raw_output = planner_result.raw_response
             if planner_result.decision is not None and planner_result.decision.confidence >= 0.55:
+                planner_result.decision.semantic_candidates = semantic_result.candidates or []
+                planner_result.decision.llm_planner_output = planner_raw_output
                 return planner_result.decision
         except Exception:
             pass
 
-        return self._keyword_fallback_decision(input_text)
+        fallback_decision = self._keyword_fallback_decision(input_text)
+        fallback_decision.semantic_candidates = semantic_result.candidates or []
+        fallback_decision.llm_planner_output = planner_raw_output
+        return fallback_decision
 
     def route(self, input_text: str) -> str:
         return self.decide(input_text).route.value
@@ -244,6 +253,9 @@ class OrchestratorAgent(BaseAgent):
         confidence: float,
         routing_source: str,
         reason: str = "",
+        matched_example: str | None = None,
+        semantic_candidates: list[dict] | None = None,
+        llm_planner_output: str | None = None,
     ) -> RoutingDecision:
         mapping: dict[IntentType, tuple[AgentRole, TaskType, str | None]] = {
             IntentType.customer_lookup: (
@@ -306,6 +318,9 @@ class OrchestratorAgent(BaseAgent):
             confidence=confidence,
             routing_source=routing_source,
             reason=reason,
+            matched_example=matched_example,
+            semantic_candidates=semantic_candidates or [],
+            llm_planner_output=llm_planner_output,
         )
 
     def _is_realtime_web_query(self, text: str) -> bool:
@@ -472,6 +487,7 @@ class OrchestratorAgent(BaseAgent):
             f"Orchestrator classified task_type={task_type.value}, "
             f"route={route}, intent={decision.intent.value}, "
             f"confidence={decision.confidence:.2f}, source={decision.routing_source}, "
+            f"reason={decision.reason}, "
             f"input_length={len(input_text)}."
         )
         if route != AgentRole.orchestrator.value:

@@ -73,6 +73,7 @@ class LLMPlanner:
             confidence=confidence_value,
             routing_source="llm_planner",
             reason=str(payload.get("reason") or ""),
+            llm_planner_output=raw_response,
         )
 
 

@@ -28,6 +28,10 @@ def complete_agent_run(
     intent_confidence: float | None,
     routing_source: str | None,
     retrieval_document_type: str | None,
+    routing_reason: str | None,
+    matched_example: str | None,
+    semantic_candidates: list[dict] | None,
+    llm_planner_output: str | None,
     final_answer: str,
     duration_ms: float,
 ) -> AgentRun:
@@ -37,6 +41,10 @@ def complete_agent_run(
     agent_run.intent_confidence = intent_confidence
     agent_run.routing_source = routing_source
     agent_run.retrieval_document_type = retrieval_document_type
+    agent_run.routing_reason = routing_reason
+    agent_run.matched_example = matched_example
+    agent_run.semantic_candidates = semantic_candidates
+    agent_run.llm_planner_output = llm_planner_output
     agent_run.final_answer = final_answer
     agent_run.status = "completed"
     agent_run.duration_ms = duration_ms

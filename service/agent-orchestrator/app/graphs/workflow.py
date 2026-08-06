@@ -57,6 +57,10 @@ class WorkflowGraph:
                 "intent_confidence": decision.confidence,
                 "routing_source": decision.routing_source,
                 "retrieval_document_type": decision.document_type,
+                "routing_reason": decision.reason,
+                "matched_example": decision.matched_example,
+                "semantic_candidates": decision.semantic_candidates,
+                "llm_planner_output": decision.llm_planner_output,
                 "workflow_plan": self.orchestrator.build_plan_for_task(task_type),
                 "orchestrator_summary": self.orchestrator.run(
                     state.input_text,
@@ -229,7 +233,22 @@ class WorkflowGraph:
         self,
         input_text: str,
         memory_context: str = "",
-    ) -> tuple[AgentRole, object, object, float, str, str | None, list[str], str, list, str]:
+    ) -> tuple[
+        AgentRole,
+        object,
+        object,
+        float,
+        str,
+        str | None,
+        str,
+        str | None,
+        list[dict],
+        str | None,
+        list[str],
+        str,
+        list,
+        str,
+    ]:
         result = self.graph.invoke({"input_text": input_text, "memory_context": memory_context})
         return (
             result["route"],
@@ -238,6 +257,10 @@ class WorkflowGraph:
             result["intent_confidence"],
             result["routing_source"],
             result.get("retrieval_document_type"),
+            result.get("routing_reason") or "",
+            result.get("matched_example"),
+            result.get("semantic_candidates") or [],
+            result.get("llm_planner_output"),
             result["workflow_plan"],
             result["orchestrator_summary"],
             result["specialist_results"],

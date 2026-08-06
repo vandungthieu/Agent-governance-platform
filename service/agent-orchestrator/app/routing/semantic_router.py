@@ -17,6 +17,7 @@ class SemanticIntentResult:
     intent: IntentType
     confidence: float
     matched_example: str | None = None
+    candidates: list[dict] | None = None
     source: str = "semantic"
 
 
@@ -31,35 +32,50 @@ class SemanticIntentRouter:
         self._example_vectors: list[tuple[IntentType, str, list[float]]] | None = None
 
     def route(self, input_text: str) -> SemanticIntentResult | None:
+        result = self.evaluate(input_text)
+        if result.intent == IntentType.unknown or result.confidence < self.threshold:
+            return None
+        return result
+
+    def evaluate(self, input_text: str) -> SemanticIntentResult:
         text = input_text.strip()
         if not text:
-            return None
+            return SemanticIntentResult(intent=IntentType.unknown, confidence=0.0, candidates=[])
 
         try:
             self._ensure_example_vectors()
             if not self._example_vectors:
-                return None
+                return SemanticIntentResult(intent=IntentType.unknown, confidence=0.0, candidates=[])
             query_vector = self.embedding_client.embed(text)
         except Exception as exc:
             logger.warning("semantic_router_unavailable error=%s", exc)
-            return None
+            return SemanticIntentResult(intent=IntentType.unknown, confidence=0.0, candidates=[])
 
-        best_intent: IntentType | None = None
-        best_example: str | None = None
-        best_score = -1.0
+        scored_candidates: list[dict] = []
         for intent, example, example_vector in self._example_vectors:
             score = cosine_similarity(query_vector, example_vector)
-            if score > best_score:
-                best_score = score
-                best_intent = intent
-                best_example = example
+            scored_candidates.append(
+                {
+                    "intent": intent.value,
+                    "score": round(score, 4),
+                    "example": example,
+                }
+            )
 
-        if best_intent is None or best_score < self.threshold:
-            return None
+        top_candidates = sorted(
+            scored_candidates,
+            key=lambda candidate: float(candidate["score"]),
+            reverse=True,
+        )[:3]
+        if not top_candidates:
+            return SemanticIntentResult(intent=IntentType.unknown, confidence=0.0, candidates=[])
+
+        best_candidate = top_candidates[0]
         return SemanticIntentResult(
-            intent=best_intent,
-            confidence=round(best_score, 4),
-            matched_example=best_example,
+            intent=IntentType(str(best_candidate["intent"])),
+            confidence=float(best_candidate["score"]),
+            matched_example=str(best_candidate["example"]),
+            candidates=top_candidates,
         )
 
     def _ensure_example_vectors(self) -> None:

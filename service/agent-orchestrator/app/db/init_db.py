@@ -13,6 +13,10 @@ def init_db() -> None:
         connection.execute(text("ALTER TABLE agent_runs ADD COLUMN IF NOT EXISTS intent_confidence DOUBLE PRECISION"))
         connection.execute(text("ALTER TABLE agent_runs ADD COLUMN IF NOT EXISTS routing_source VARCHAR(64)"))
         connection.execute(text("ALTER TABLE agent_runs ADD COLUMN IF NOT EXISTS retrieval_document_type VARCHAR(64)"))
+        connection.execute(text("ALTER TABLE agent_runs ADD COLUMN IF NOT EXISTS routing_reason TEXT"))
+        connection.execute(text("ALTER TABLE agent_runs ADD COLUMN IF NOT EXISTS matched_example TEXT"))
+        connection.execute(text("ALTER TABLE agent_runs ADD COLUMN IF NOT EXISTS semantic_candidates JSON"))
+        connection.execute(text("ALTER TABLE agent_runs ADD COLUMN IF NOT EXISTS llm_planner_output TEXT"))
         connection.execute(
             text(
                 f"""

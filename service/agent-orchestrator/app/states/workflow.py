@@ -42,6 +42,9 @@ class RoutingDecision(BaseModel):
     confidence: float = 0.0
     routing_source: str = "fallback"
     reason: str = ""
+    matched_example: str | None = None
+    semantic_candidates: list[dict] = Field(default_factory=list)
+    llm_planner_output: str | None = None
 
 
 class WorkflowRequest(BaseModel):
@@ -69,6 +72,10 @@ class AgentState(BaseModel):
     intent_confidence: float = 0.0
     routing_source: str = "fallback"
     retrieval_document_type: str | None = None
+    routing_reason: str = ""
+    matched_example: str | None = None
+    semantic_candidates: list[dict] = Field(default_factory=list)
+    llm_planner_output: str | None = None
     workflow_plan: list[str] = Field(default_factory=list)
     orchestrator_summary: str = ""
     specialist_results: Annotated[list[AgentResult], _merge_results] = Field(default_factory=list)
@@ -85,6 +92,10 @@ class WorkflowResponse(BaseModel):
     intent_confidence: float = 0.0
     routing_source: str = "fallback"
     retrieval_document_type: str | None = None
+    routing_reason: str = ""
+    matched_example: str | None = None
+    semantic_candidates: list[dict] = Field(default_factory=list)
+    llm_planner_output: str | None = None
     workflow_plan: list[str]
     orchestrator_summary: str
     specialist_results: list[AgentResult]
